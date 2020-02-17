@@ -1,0 +1,51 @@
+---
+title: "Detecting text about doctors in the responses to an open-ended survey question"
+author: "Alison E. Turnbull"
+date: "2/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages, include=FALSE}
+library(tidyverse)
+library(here)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(forcats)
+library(stringr)
+library(epiR)
+```
+
+#### Load data
+```{r load data}
+data <- read_csv(here::here("data", "20200217_COPD Qualanalysis data.csv"), col_types = cols())
+```
+
+
+### Survey question:
+
+>*We are interested in any comments you have about how doctors and family members of sick patients communicate. If you'd like to share your comments with us, please write whatever you would like in the box below. Please don't mention names or identifying information.*
+
+
+### A regular expression to identify responses to open-ended questions about doctors
+```{r find comments about docs}
+    doc_comments<-str_detect(data$comment, regex("doctor.|MD.|physician.|dr.|they.", ignore_case=TRUE))
+    data$detected<-doc_comments
+    
+    data<-data %>%
+      mutate(detected = ifelse(is.na(detected), FALSE, detected)) %>%
+      mutate(gold_doc_comment= ifelse(!is.na(comment_cat), "Yes", "No"))
+
+      table(data$gold_doc_comment, data$detected, useNA = "ifany")
+      comment_table <- as.table(matrix(c(75,6,4,217), nrow = 2, byrow = TRUE))
+      
+#Ok, here's our 2 x 2 table
+    detect_eval<-epi.tests(comment_table, conf.level = 0.95)
+    print(detect_eval)
+```
+
