@@ -1,0 +1,105 @@
+---
+title: "Clustering of Qualtrics Survey Respondents"
+author: "Alison E. Turnbull"
+date: "3/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages, include=FALSE}
+library(tidyverse)
+library(here)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(forcats)
+library(stringr)
+library(rafalib)
+library(tableone)
+```
+
+#### Load data
+```{r load data}
+data <- read_csv(here::here("data", "20200218_COPD Qualanalysis data.csv"), col_types = cols())
+```
+
+
+# Straighten up demographic variable categories
+```{r var_clean, include = FALSE}
+data <- data %>%
+  mutate(age=as.numeric(age)) %>% 
+  mutate(race_wh = ifelse(str_detect(race, "White"), 1, 0)) %>%
+  mutate(race_bl = ifelse(str_detect(race, "Black or African American"), 1, 0)) %>% 
+  mutate(race_as = ifelse(str_detect(race, "Asian"), 1, 0)) %>% 
+  mutate(race_native = ifelse(str_detect(race, "Native Hawaiian or Pacific Islander | "), 1, 0)) %>% 
+  mutate(race_native = ifelse(str_detect(race, "American Indian or Alaska Native"), 1, race_native)) %>% 
+  mutate(race_na = ifelse(str_detect(race, "Prefer not to answer"), 1, 0))
+data <- data %>% 
+  mutate(race2 = ifelse(race == "White", "White", NA)) %>%
+  mutate(race2 = ifelse(race == "Black or African American", "Black", race2))  %>%
+  mutate(race2 = ifelse(race == "Prefer not to answer", "Prefer not to answer", race2)) %>%
+  mutate(race2 = ifelse(is.na(race2), "Other / More than one race", race2))
+  
+data <- data %>% 
+  mutate(ed = as_factor(ed))  %>%
+  mutate(ed = fct_collapse(ed,
+              `High school diploma, equivalent or less` = c("High school graduate (high school diploma or equivalent including GED)", "Less than high school degree"), 
+              `Some college` = c("Some college but no degree", "Associate degree in college (2-year)"),
+              `Bachelor's degree (4-year) or more` = c("Bachelor's degree in college (4-year)", "Master's degree", "Doctoral degree", "Professional degree (JD, MD)"), 
+              `Graduate or professional degree` = c("Master's degree", "Doctoral degree", "Professional degree (JD, MD)"))) %>%
+  mutate(ed = fct_relevel(ed, 
+                         "High school diploma, equivalent or less", 
+                         "Some college", 
+                         "Bachelor's degree (4-year) or more")) %>%
+  mutate(vent = ifelse(vent == "Yes", "Ventilated", vent)) %>% 
+  mutate(vent = ifelse(vent == "No", "Never ventilated", vent)) %>% 
+  mutate(vent = ifelse(vent == "Unsure / I don't know", "Unsure/unknown", vent)) %>% 
+  mutate(relat = ifelse(relat == "They're my spouse or partner", "Spouse or partner of patient", relat)) %>% 
+  mutate(relat = ifelse(relat == "They're my parent, or step-parent", "Child or step-child of patient", relat)) %>% 
+  mutate(relat = ifelse(relat == "They're my sibling", "Sibling of patient", relat)) 
+```
+
+
+### Format data for cluster analysis
+```{r format_data}
+# Create a table in which the 3 features are rows and each survey respondent is a column
+feature_info<-data %>%
+                select(rasch_score_total, trust_score, stofhlascore) %>%
+                t()
+
+    colnames(feature_info)<-data$uid
+
+# Create a dataframe containing information about the respondent
+family_info<-data %>%
+    select(uid, ed, age, ethn, race, sex, vent, relat, region, arm, sentim_final, rasch_score_total, trust_score, stofhlascore)
+    
+all(family_info$uid==colnames(feature_info))
+
+```
+
+```{r distance}
+  d1<-dist(t(feature_info), method="euclidean")
+  
+  hc<-hclust(d1)
+  plot(hc, labels=family_info$uid, cex=0.5) +
+    abline(h=15)
+  hclusters<-cutree(hc, h=15)
+```
+
+```{r explore_clusters}
+      table(true=family_info$sentim_final,
+              cluster=hclusters, useNA = "ifany")
+```
+
+```{r traits_by_cluster}
+  family_info$cluster<-hclusters
+  
+  Table1<-CreateTableOne(data=family_info, strata = "cluster")
+  Table1
+  ## Ugh, this is ugly.  Clean up on Monday. 
+```
+
